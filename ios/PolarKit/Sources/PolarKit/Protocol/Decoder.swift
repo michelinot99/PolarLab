@@ -61,7 +61,13 @@ public final class StreamDecoder {
         let st = Pmd.StreamSettings.from(mt, s)
         settings[mt] = st
         startCmds[mt] = data
-        clocks[mt] = StreamClock(nominalFs: st.sampleRate)
+        // Riavvio dello stream (riconnessione, STOP+START): l'orologio della fascia continua,
+        // quindi si tiene il vecchio StreamClock e il buco emerge dai timestamp. Con un orologio
+        // nuovo il primo frame sembrerebbe contiguo all'ultimo e l'RR a cavallo del buco
+        // (anche diversi secondi) entrerebbe nelle metriche come un battito vero.
+        if clocks[mt]?.nominalFs != st.sampleRate {
+            clocks[mt] = StreamClock(nominalFs: st.sampleRate)
+        }
         return [.streamStarted(StreamStarted(stream: mt, sampleRate: st.sampleRate, resolution: st.resolution, range: st.range))]
     }
 

@@ -47,6 +47,26 @@ def test_packet_loss_is_detected_and_flagged():
     assert eng.metrics.beats > 150
 
 
+def test_reconnection_gap_never_becomes_an_rr_interval():
+    # Riconnessione Bluetooth: 5 s senza dati, poi l'app riscrive START (come Mac e iPhone)
+    sim = H10Simulator(host_t0=0.0, loop=False)
+    packets = list(sim.startup_packets())
+    while sim.t < 200:
+        packets += sim.advance(0.5)
+    starts = [p for p in packets[:8] if p.channel == Channel.PMD_CP_WRITE and p.data[0] == 0x02]
+    packets = ([p for p in packets if p.host_t < 100.0] + [Packet(105.0, p.channel, p.data) for p in starts]
+               + [p for p in packets if p.host_t >= 105.0])
+    dec, eng = StreamDecoder(), Engine(keep_log=True)
+    for p in packets:
+        for e in dec.feed(p):
+            eng.handle(e)
+    eng.finish()
+    assert dec.stats.gaps >= 2                                   # ECG e ACC
+    assert dec.stats.missing_samples >= 4.5 * 130
+    assert max(r["rr_ms"] for r in eng.beat_log) < 2000.0
+    assert all(r["kind"] == "normal" for r in eng.beat_log if 100 < r["t"] < 115)
+
+
 def test_session_roundtrip_and_export(tmp_path):
     _, _, eng, packets = run_sim(90)
     w = SessionWriter(tmp_path / "s", {"source": "test"})

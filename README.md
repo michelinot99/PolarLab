@@ -194,7 +194,7 @@ changes.
 | Effort | moving segments detected from the accelerometer, steps, cadence, vertical oscillation, cardiac drift (2nd vs 1st half of the longest steady segment ≥ 20 min) |
 | Recovery | HR drop 30, 60 and 120 s after the peak at the end of the last effort, with the curve |
 | HRV | RMSSD/SDNN in the still minutes before the first movement; RMSSD while moving; whole-session Poincaré |
-| Events to review | premature beats (short-long RR pattern from the Lipponen–Tarvainen classifier, with the QRS correlation against your median normal beat), runs of premature beats, frequent premature beats (≥ 1% of beats), pauses (RR > 2 s), very high HR (above your max + 5, or 200 bpm, for ≥ 10 s), abrupt HR jumps (> 30 bpm in 5 s without a change in movement), irregular rhythm under effort (HR > 100 with ≥ 25% of consecutive beats differing by more than 8%), data gaps, lost contact, poor signal |
+| Events to review | premature beats (short-long RR pattern from the Lipponen–Tarvainen classifier, with the QRS correlation against your median normal beat), runs of premature beats, frequent premature beats (≥ 1% of beats), pauses (RR > 2 s), very high HR (above your max + 5, or 200 bpm, for ≥ 10 s), abrupt HR jumps (> 30 bpm in 5 s without a change in movement), irregular rhythm under effort (HR > 100 with ≥ 25% of consecutive beats differing by more than 8%), abrupt rhythm changes (flagged RR intervals that the H10 measured identically with its own detector: real beats, not artifacts), data gaps, lost contact, poor signal |
 
 The methods, thresholds and their limits are described in [docs/ANALYSIS.md](docs/ANALYSIS.md).
 

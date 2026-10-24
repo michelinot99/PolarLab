@@ -132,3 +132,36 @@ def test_import_iphone_zip(sim_session, tmp_path):
     assert import_path(z, root) == dest                      # stessa registrazione: nessun doppione
     assert list_sessions(root) == [dest]
     assert R.analyze(dest).duration_s > 600
+
+
+def test_zero_phase_filter_does_not_cross_data_gaps():
+    # Due tratti con livelli di base molto diversi separati da un buco: il secondo non deve
+    # "vedere" il primo (il passa-alto lo farebbe oscillare per secondi attorno al buco)
+    fs = 130.0
+    t = np.r_[np.arange(0, 20, 1 / fs), 25 + np.arange(0, 20, 1 / fs)]
+    uv = np.r_[np.full(int(20 * fs), 3000.0), np.zeros(int(20 * fs))]
+    out = R._zero_phase_by_segment(t, uv, fs)
+    assert np.max(np.abs(out)) < 1.0
+
+
+def test_strap_rr_confirms_real_rhythm_changes_only():
+    # Rallentamento brusco reale: la fascia (rilevatore indipendente) misura gli stessi RR
+    rr = np.r_[np.full(30, 560.0), 730.0, 915.0, 835.0, np.full(30, 780.0)]
+    b_t = np.cumsum(rr) / 1000.0
+    hr_rows = [(float(b_t[i + 1]), 0, f"{rr[i]:.1f};{rr[i + 1]:.1f}", True) for i in range(0, len(rr) - 1, 2)]
+    rep = R.SessionReport(
+        dir=None, meta={}, duration_s=float(b_t[-1]), ecg_fs=130.0, stats={}, m_t=np.empty(0), hr_ecg=np.empty(0),
+        hr_strap=np.empty(0), dfa_a1=np.empty(0), quality=np.empty(0), artifact_pct=np.empty(0), cadence=np.empty(0),
+        motion=np.empty(0), vosc=np.empty(0), rmssd=np.empty(0), resp=np.empty(0), battery=np.empty(0),
+        strap_mae=np.empty(0), strap_match=np.empty(0), b_t=b_t, b_rr=rr, b_nn=rr, b_kind=np.full(len(rr), "normal"),
+        b_med=rr, r_t=b_t, r_amp=np.ones(len(rr)), ecg_t=np.empty(0), ecg=np.empty(0), step_t=np.empty(0),
+        active=np.empty((0, 2)), tpl_t=np.empty(0), tpl_normal=np.empty(0), tpl_ectopic=np.empty(0),
+        ect_t=np.empty(0), ect_corr=np.empty(0), gaps=np.empty((0, 2)), contact_lost=np.empty((0, 2)),
+        **R._strap_rr(hr_rows))
+    assert np.allclose(rep.s_rr, rr[: len(rep.s_rr)])
+    assert np.allclose(rep.s_t, b_t[: len(rep.s_t)])
+    assert R._confirmed_by_strap(rep, [30, 31, 32])
+    # Un nostro falso battito spezza un intervallo in due: la fascia non ha quella sequenza
+    rep.b_rr = rr.copy()
+    rep.b_rr[31:33] = [400.0, 515.0]
+    assert not R._confirmed_by_strap(rep, [31, 32])

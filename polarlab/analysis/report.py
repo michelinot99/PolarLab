@@ -28,7 +28,7 @@ from polarlab.dsp.dfa import ANT_ALPHA1, AET_ALPHA1
 from polarlab.dsp.filters import zero_phase_ecg
 from polarlab.dsp.template import POST_S, PRE_S
 
-ANALYSIS_VERSION = 2
+ANALYSIS_VERSION = 3
 CACHE_NPZ, CACHE_JSON = "analysis.npz", "analysis.json"
 
 GOOD_QUALITY = 65.0          # stessa soglia dell'etichetta "buona"
@@ -40,6 +40,7 @@ PAUSE_MS = 2000.0
 JUMP_BPM = 30.0
 IRREGULAR_DIFF = 0.08        # |ΔRR| / RR oltre cui due battiti consecutivi sono "diversi"
 IRREGULAR_SHARE = 0.25
+STRAP_CONFIRM_MS = 4.0       # RR nostri e della fascia coincidono di solito entro ~1 ms: 4 ms di margine
 MIN_R2 = 0.3                 # sotto, la regressione α1 ↔ FC non dà soglie       # quota di coppie "diverse" che rende irregolare una finestra di 30 s
 
 LEVELS = ("serious", "warning", "info")
@@ -47,7 +48,7 @@ FLAGGED = ("ectopic", "longshort")
 _ARRAYS = ("m_t", "hr_ecg", "hr_strap", "dfa_a1", "quality", "artifact_pct", "cadence", "motion", "vosc",
            "rmssd", "resp", "battery", "strap_mae", "strap_match",
            "b_t", "b_rr", "b_nn", "b_kind", "b_med", "r_t", "r_amp", "ecg_t", "ecg",
-           "step_t", "active", "tpl_t", "tpl_normal", "tpl_ectopic", "ect_t", "ect_corr", "gaps", "contact_lost")
+           "step_t", "active", "tpl_t", "tpl_normal", "tpl_ectopic", "ect_t", "ect_corr", "gaps", "contact_lost", "s_t", "s_rr")
 
 
 @dataclass
@@ -111,6 +112,9 @@ class SessionReport:
     # integrità dei dati
     gaps: np.ndarray            # (n, 2) istante, campioni mancanti
     contact_lost: np.ndarray    # (n, 2) inizio/fine
+    # RR interni della fascia (0x2A37), istante approssimato: secondo rilevatore indipendente
+    s_t: np.ndarray = field(default_factory=lambda: np.empty(0))
+    s_rr: np.ndarray = field(default_factory=lambda: np.empty(0))
     extras: dict = field(default_factory=dict)
 
     @property
@@ -215,8 +219,7 @@ def _col(rows: list[dict], key: str) -> np.ndarray:
 def _build(directory: Path, pr) -> SessionReport:
     ml, bl = pr.metrics_log, pr.beat_log
     fs = pr.ecg_fs
-    ecg = zero_phase_ecg(pr.ecg_uv.astype(float), fs).astype(np.float32) if len(pr.ecg_uv) > 30 else \
-        pr.ecg_uv.astype(np.float32)
+    ecg = _zero_phase_by_segment(pr.ecg_t, pr.ecg_uv, fs)
     b_t = np.array([r["t"] for r in bl], dtype=float)
     b_rr = np.array([r["rr_ms"] for r in bl], dtype=float)
     b_kind = np.array([r["kind"] for r in bl], dtype="U9")
@@ -237,9 +240,22 @@ def _build(directory: Path, pr) -> SessionReport:
         step_t=step_t, active=active,
         tpl_t=np.empty(0), tpl_normal=np.empty(0), tpl_ectopic=np.empty(0), ect_t=np.empty(0), ect_corr=np.empty(0),
         gaps=np.asarray(pr.gaps, dtype=float).reshape(-1, 2),
-        contact_lost=_contact_lost(pr.hr_rows))
+        contact_lost=_contact_lost(pr.hr_rows), **_strap_rr(pr.hr_rows))
     _morphology(rep)
     return rep
+
+
+def _zero_phase_by_segment(t: np.ndarray, uv: np.ndarray, fs: float) -> np.ndarray:
+    """Filtro a fase zero su ogni tratto contiguo: attraverso un buco di dati il passa-alto
+    a 0.5 Hz spalmerebbe il salto per un paio di secondi sui battiti vicini, in entrambe le direzioni."""
+    out = uv.astype(float)
+    cuts = np.flatnonzero(np.diff(t) > 3.0 / fs) + 1
+    for a, b in zip(np.r_[0, cuts], np.r_[cuts, len(out)]):
+        if b - a > 30:
+            out[a:b] = zero_phase_ecg(out[a:b], fs)
+        elif b > a:
+            out[a:b] -= np.median(out[a:b])
+    return out.astype(np.float32)
 
 
 def _local_median(rr: np.ndarray, kind: np.ndarray, half: int = 5) -> np.ndarray:
@@ -316,6 +332,41 @@ def _runs(mask: np.ndarray, t0: float, merge_gap: float, min_len: float, step: f
         else:
             merged.append([a, b])
     return [(a, b) for a, b in merged if b - a >= min_len]
+
+
+def _strap_rr(hr_rows: list[tuple]) -> dict[str, np.ndarray]:
+    """RR della fascia in ordine, ciascuno con l'istante del battito che lo chiude.
+
+    La notifica non ha timestamp: gli RR si mettono all'indietro dall'arrivo, quindi gli
+    istanti sono in ritardo fino a ~1 s. Bastano per ritrovare una sequenza di intervalli.
+    """
+    t, rr = [], []
+    for tn, _, s, _ in hr_rows:
+        vals = [float(v) for v in s.split(";") if v]
+        if not vals or not np.isfinite(tn):
+            continue
+        ends = tn - np.r_[np.cumsum(vals[::-1])[::-1][1:], 0.0] / 1000.0
+        t += list(ends)
+        rr += vals
+    return {"s_t": np.asarray(t, dtype=float), "s_rr": np.asarray(rr, dtype=float)}
+
+
+def _confirmed_by_strap(rep: SessionReport, idx: list[int]) -> bool:
+    """Gli intervalli consecutivi `idx` compaiono identici tra gli RR interni della fascia?
+
+    La H10 misura gli RR con un proprio rilevatore, indipendente dal nostro: se la stessa
+    sequenza di intervalli insoliti compare anche lì, i battiti sono reali e non un errore
+    di rilevamento (resta da capire se sono un cambio di ritmo o battiti prematuri).
+    """
+    if not len(rep.s_rr):
+        return False
+    ours = rep.b_rr[idx]
+    t = rep.b_t[idx[0]]
+    for j in np.flatnonzero((rep.s_t > t - 2.0) & (rep.s_t < t + 4.0)):
+        seg = rep.s_rr[j:j + len(ours)]
+        if len(seg) == len(ours) and np.all(np.abs(seg - ours) <= STRAP_CONFIRM_MS):
+            return True
+    return False
 
 
 def _contact_lost(hr_rows: list[tuple]) -> np.ndarray:
@@ -598,6 +649,10 @@ def _premature_events(rep: SessionReport) -> list[Event]:
         i0 = short[0] if short else g[0]
         t = float(rep.b_t[i0])
         q = _quality_at(rep, t)
+        if not long_after and np.isfinite(q) and q >= GOOD_QUALITY and _confirmed_by_strap(rep, span):
+            out.append(Event(t, None, "rhythm_change", "info", "Cambio brusco del ritmo",
+                             "battiti reali: la fascia ha misurato gli stessi intervalli RR"))
+            continue
         if not long_after or not np.isfinite(q) or q < GOOD_QUALITY:
             why = "segnale scarso" if np.isfinite(q) and q < GOOD_QUALITY else "senza la pausa tipica di un battito prematuro"
             out.append(Event(t, None, "artifact", "info", "Probabile artefatto", f"intervallo RR irregolare, {why}"))
@@ -708,8 +763,10 @@ def _irregular_events(rep: SessionReport, win: float = 30.0, step: float = 15.0)
 def _signal_events(rep: SessionReport) -> list[Event]:
     out = []
     for t, n in rep.gaps:
-        out.append(Event(float(t), None, "gap", "info", "Dati mancanti",
-                         f"{int(n)} campioni ECG persi ({n / rep.ecg_fs:.1f} s)"))
+        # n < 0: timestamp tornato indietro (fascia riavviata), il buco non è misurabile
+        detail = (f"{int(n)} campioni ECG persi ({n / rep.ecg_fs:.1f} s)" if n > 0
+                  else "flusso ECG ripartito da capo, durata del buco non misurabile")
+        out.append(Event(float(t), None, "gap", "info", "Dati mancanti", detail))
     for a, b in rep.contact_lost:
         out.append(Event(float(a), float(b), "contact", "info", "Contatto della fascia perso",
                          f"per circa {b - a + 1:.0f} s"))

@@ -76,7 +76,13 @@ class StreamDecoder:
         st = pmd.StreamSettings.from_settings(mt, s)
         self.settings[mt] = st
         self._start_cmds[mt] = bytes(data)
-        self.clocks[mt] = StreamClock(st.sample_rate)
+        clock = self.clocks.get(mt)
+        # Riavvio dello stream (riconnessione, STOP+START): l'orologio della fascia continua,
+        # quindi si tiene il vecchio StreamClock e il buco emerge dai timestamp. Con un orologio
+        # nuovo il primo frame sembrerebbe contiguo all'ultimo e l'RR a cavallo del buco
+        # (anche diversi secondi) entrerebbe nelle metriche come un battito vero.
+        if clock is None or clock.nominal_fs != st.sample_rate:
+            self.clocks[mt] = StreamClock(st.sample_rate)
         return [StreamStarted(stream=mt.name, sample_rate=st.sample_rate, resolution=st.resolution, range=st.range)]
 
     def _on_data(self, p: Packet) -> list:

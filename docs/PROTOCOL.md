@@ -89,7 +89,12 @@ The timestamp is in the strap's clock (Polar epoch 2000-01-01, but not set on th
 it as an arbitrary monotonic clock). The times of the earlier samples in a frame are
 reconstructed backwards using the effective period estimated from the timestamps themselves
 (`timebase.StreamClock`). If the interval between two frames is worth more than `n` samples,
-packets are missing and the difference tells how many samples.
+packets are missing and the difference tells how many samples. The strap's clock keeps
+running across a Bluetooth reconnection or a STOP + START, so a new START with the same
+settings keeps the stream's clock: the first frame after it reveals the gap like any other
+loss (gaps up to 1 s are filled and the RR across them is `invalid`, longer ones restart
+beat detection). A timestamp that goes backwards means the strap restarted: detection
+restarts too.
 
 The real sample rate differs from the declared one: on one H10 (firmware 5.0.0) the
 "130 Hz" ECG runs at ~129.7 Hz and the "100 Hz" ACC at ~101.9 Hz. For the ECG this matters
