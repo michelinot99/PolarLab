@@ -94,6 +94,7 @@ class Engine:
         self.keep_log = keep_log
         self.beat_log: list[dict] = []
         self.metrics_log: list[dict] = []
+        self.rpeak_log: list[tuple[float, float]] = []   # (istante relativo a t0, ampiezza) di ogni picco R
         self.metrics = Metrics()
         self.t0: float | None = None
         self._setup_ecg(130.0)
@@ -223,6 +224,8 @@ class Engine:
         t = self._index_to_time(b.index)
         self._beats.append((b.index, b.amplitude))
         self.metrics.beats += 1
+        if self.keep_log:
+            self.rpeak_log.append((t - (self.t0 or 0.0), float(b.amplitude)))
         if self._last_beat_t is not None:
             rr = (t - self._last_beat_t) * 1000.0
             # Intervallo che attraversa un tratto riempito (pacchetti persi): non affidabile

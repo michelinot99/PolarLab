@@ -1,35 +1,36 @@
-# Porting su iPhone (Xcode, Swift)
+# Porting to iPhone (Xcode, Swift)
 
-> **Stato (2026-10-24):** il porting è fatto, in `ios/` (vedi [ios/README.md](../ios/README.md)).
-> `PolarKit` riproduce `polarlab/` 1:1: su sessioni reali e simulate battiti, RR e metriche
-> coincidono con Python (`scripts/compare_swift.py`). Le primitive di scipy (Butterworth,
-> filtfilt, Welch, CubicSpline, PCHIP, find_peaks) sono riscritte in `PolarKit/DSP/Signal.swift`.
+> **Status (2026-10-24):** the port is done, in `ios/` (see [ios/README.md](../ios/README.md)).
+> `PolarKit` reproduces `polarlab/` 1:1: on real and simulated sessions, beats, RR intervals
+> and metrics match Python (`scripts/compare_swift.py`). The scipy primitives (Butterworth,
+> filtfilt, Welch, CubicSpline, PCHIP, find_peaks) are rewritten in `PolarKit/DSP/Signal.swift`.
+> The whole-session analysis (`polarlab/analysis/`) exists only on the Mac.
 
-PolarLab è stato strutturato per questo passaggio: ogni modulo Python ha un equivalente
-Swift diretto, e i test con vettori di byte e le sessioni registrate servono da riferimento
-per verificare la versione iOS.
+PolarLab was structured for this step: every Python module has a direct Swift equivalent,
+and the byte-vector tests and recorded sessions serve as the reference for checking the iOS
+version.
 
-## Mappa dei moduli
+## Module map
 
-| Python | Swift | Note |
+| Python | Swift | Notes |
 |---|---|---|
 | `protocol/uuids.py` | `enum GATT { static let pmdService = CBUUID(string: "FB005C80-…") }` | |
-| `protocol/pmd.py` | `struct PmdFrame`, `func parseDataFrame(_ data: Data) throws -> PmdFrame` | int24 con segno: `Int32(bitPattern: (UInt32(b0) \| UInt32(b1) << 8 \| UInt32(b2) << 16) << 8) >> 8` |
+| `protocol/pmd.py` | `struct PmdFrame`, `func parseDataFrame(_ data: Data) throws -> PmdFrame` | signed int24: `Int32(bitPattern: (UInt32(b0) \| UInt32(b1) << 8 \| UInt32(b2) << 16) << 8) >> 8` |
 | `protocol/hr_service.py` | `struct HrMeasurement`, `init(data: Data)` | |
-| `protocol/timebase.py` | `final class StreamClock`, `final class ClockSync` | timestamp UInt64 ns → `Double` secondi |
-| `protocol/decoder.py` | `final class StreamDecoder` | stesso stato, stessi eventi |
-| `sources/polar_ble.py` | `final class PolarH10: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate` | vedi sotto |
-| `sources/simulator.py` | `H10Simulator` (solo build DEBUG) | per sviluppare l'UI nel simulatore Xcode, che non ha Bluetooth |
-| `sources/replay.py` | `ReplaySource` | legge lo stesso `raw.plab` |
-| `dsp/filters.py` | `vDSP.Biquad` (Accelerate) | i coefficienti SOS di scipy si copiano 1:1 |
-| `dsp/qrs.py` | `final class QRSDetector` | ciclo per campione in Swift puro, è già O(1) |
-| `dsp/rr_clean.py`, `hrv.py`, `dfa.py` | funzioni pure su `[Double]` | |
-| `dsp/respiration.py`, `motion.py` | Accelerate (`vDSP.FFT`, autocorrelazione con `vDSP.convolve`) | |
-| `core/engine.py` | `actor Engine` o classe su una serial queue | `snapshot()` → `struct Snapshot: Sendable` |
-| `core/session.py` | `SessionWriter` con `FileHandle` | **stesso formato binario** |
-| `ui/` | SwiftUI | vedi sotto |
+| `protocol/timebase.py` | `final class StreamClock`, `final class ClockSync` | UInt64 ns timestamp → `Double` seconds |
+| `protocol/decoder.py` | `final class StreamDecoder` | same state, same events |
+| `sources/polar_ble.py` | `final class PolarH10: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate` | see below |
+| `sources/simulator.py` | `H10Simulator` (DEBUG builds only) | to develop the UI in the Xcode simulator, which has no Bluetooth |
+| `sources/replay.py` | `ReplaySource` | reads the same `raw.plab` |
+| `dsp/filters.py` | `vDSP.Biquad` (Accelerate) | scipy's SOS coefficients copy over 1:1 |
+| `dsp/qrs.py` | `final class QRSDetector` | per-sample loop in plain Swift, already O(1) |
+| `dsp/rr_clean.py`, `hrv.py`, `dfa.py` | pure functions on `[Double]` | |
+| `dsp/respiration.py`, `motion.py` | Accelerate (`vDSP.FFT`, autocorrelation with `vDSP.convolve`) | |
+| `core/engine.py` | `actor Engine` or a class on a serial queue | `snapshot()` → `struct Snapshot: Sendable` |
+| `core/session.py` | `SessionWriter` with `FileHandle` | **same binary format** |
+| `ui/` | SwiftUI | see below |
 
-## Bluetooth su iOS
+## Bluetooth on iOS
 
 ```swift
 central = CBCentralManager(delegate: self, queue: bleQueue,
@@ -37,59 +38,57 @@ central = CBCentralManager(delegate: self, queue: bleQueue,
 ```
 
 * **Info.plist**: `NSBluetoothAlwaysUsageDescription`; `UIBackgroundModes` = `bluetooth-central`
-  (lo streaming continua a schermo spento, mentre si corre).
-* **Fascia memorizzata**: salva `peripheral.identifier` (UUID), poi
-  `central.retrievePeripherals(withIdentifiers:)` + `central.connect(p)`. Una `connect`
-  pendente su iOS non scade mai: è il modo corretto di gestire la riconnessione automatica
-  quando la fascia si allontana o perde contatto. Non serve un backoff con scansioni ripetute
-  come su macOS.
-* In background la scansione funziona solo filtrando per servizio:
+  (streaming continues with the screen off, while running).
+* **Remembered strap**: save `peripheral.identifier` (UUID), then
+  `central.retrievePeripherals(withIdentifiers:)` + `central.connect(p)`. A pending `connect`
+  on iOS never times out: it is the right way to handle automatic reconnection when the strap
+  moves away or loses contact. No back-off with repeated scans is needed, unlike on macOS.
+* In the background, scanning only works when filtering by service:
   `scanForPeripherals(withServices: [CBUUID(string: "180D")])`.
-* State restoration: `centralManager(_:willRestoreState:)` ricollega le notifiche se iOS ha
-  terminato l'app durante la corsa.
-* Sequenza GATT identica a quella di `docs/PROTOCOL.md`: `setNotifyValue(true)` su 2A37, 2A19,
-  PMD CP e PMD Data, `readValue` sul CP, poi `writeValue(_, type: .withResponse)` dei comandi
-  e attesa della risposta F0 in `didUpdateValueFor`.
-* `peripheral.maximumWriteValueLength(for: .withoutResponse) + 3` dà l'MTU negoziato.
+* State restoration: `centralManager(_:willRestoreState:)` re-subscribes to notifications if
+  iOS terminated the app during the run.
+* GATT sequence identical to `docs/PROTOCOL.md`: `setNotifyValue(true)` on 2A37, 2A19,
+  PMD CP and PMD Data, `readValue` on the CP, then `writeValue(_, type: .withResponse)` for the
+  commands and wait for the F0 response in `didUpdateValueFor`.
+* `peripheral.maximumWriteValueLength(for: .withoutResponse) + 3` gives the negotiated MTU.
 
-### SDK Polar o implementazione propria?
-Polar distribuisce [PolarBleSdk](https://github.com/polarofficial/polar-ble-sdk) per iOS
-(Swift Package, basato su RxSwift). Funziona, ma porta con sé RxSwift e un'astrazione
-pensata per tutti i dispositivi Polar. Il protocollo della H10 è piccolo e qui è già
-validato byte per byte, quindi **consiglio l'implementazione propria con CoreBluetooth**
-(~500 righe): stesso decoder del Mac, nessuna dipendenza, controllo completo su riconnessione
-e background. L'SDK conviene solo se in futuro servono funzioni come la registrazione
-offline nella memoria della fascia.
+### Polar SDK or our own implementation?
+Polar distributes [PolarBleSdk](https://github.com/polarofficial/polar-ble-sdk) for iOS
+(Swift Package, based on RxSwift). It works, but it brings RxSwift and an abstraction designed
+for every Polar device. The H10 protocol is small and already validated byte by byte here, so
+**our own CoreBluetooth implementation was chosen** (~500 lines): same decoder as the Mac, no
+dependencies, full control over reconnection and background behaviour. The SDK would only be
+worth it for features such as offline recording into the strap's memory.
 
-## Concorrenza
+## Concurrency
 
 ```
 bleQueue (CoreBluetooth delegate) ──Packet──► processingQueue (serial): decoder → engine → writer
                                                           │
-                                         @MainActor  ◄────┘ snapshot a 30 Hz (solo con schermo acceso)
+                                         @MainActor  ◄────┘ snapshot at 30 Hz (screen on only)
 ```
 
-## Interfaccia
-* ECG: `TimelineView(.animation)` + `Canvas`, con lo stesso algoritmo sweep di
-  `ui/widgets/ecg_sweep.py`. Se il profiling lo richiede, si passa a Metal (`MTKView`).
-* Tacogramma, Poincaré: Swift Charts.
-* In corsa: schermata essenziale (FC, zona DFA α1, cadenza, qualità) con caratteri grandi;
-  Live Activity / Dynamic Island per FC e zona; avvisi vocali (`AVSpeechSynthesizer`) al
-  cambio di zona α1.
-* A schermo spento non si disegna nulla: si aggiornano solo le metriche.
+## Interface
+* ECG: `TimelineView(.animation)` + `Canvas`, with the same sweep algorithm as
+  `ui/widgets/ecg_sweep.py`. If profiling requires it, move to Metal (`MTKView`).
+* Tachogram, Poincaré: Swift Charts.
+* While running: a minimal screen (HR, DFA α1 zone, cadence, quality) with large type;
+  possible future additions: Live Activity / Dynamic Island for HR and zone, spoken cues
+  (`AVSpeechSynthesizer`) on α1 zone changes.
+* Nothing is drawn with the screen off: only the metrics are updated.
 
-## Dati e HealthKit
-* Le sessioni si salvano in formato `raw.plab` nella cartella Documenti (visibile in File):
-  con AirDrop si trasferiscono sul Mac e si rianalizzano con
-  `python -m polarlab --replay <cartella>`. Così ogni corsa reale diventa un caso di test.
-* HealthKit: si possono scrivere FC (`HKQuantityType(.heartRate)`), HRV SDNN e la serie dei
-  battiti (`HKHeartbeatSeriesSample`) associati a un `HKWorkout` di corsa. L'ECG grezzo **non**
-  si può scrivere: `HKElectrocardiogram` è in sola lettura e riservato ad Apple Watch.
+## Data and HealthKit
+* Sessions are saved in `raw.plab` format in the Documents folder (visible in Files): with
+  AirDrop they move to the Mac, where PolarLab imports and re-analyses them. Every real run
+  thus becomes a test case.
+* HealthKit (not implemented): HR (`HKQuantityType(.heartRate)`), HRV SDNN and the beat series
+  (`HKHeartbeatSeriesSample`) could be written, attached to a running `HKWorkout`. Raw ECG
+  **cannot** be written: `HKElectrocardiogram` is read-only and reserved to Apple Watch.
 
-## Verifica della versione iOS
-1. Port dei test di `tests/test_pmd.py`, `test_hr_service.py`, `test_timebase.py` in XCTest
-   con gli stessi vettori esadecimali.
-2. Test di non regressione: si decodifica e si analizza una sessione `raw.plab` registrata
-   col Mac e si confrontano `beats.csv` e `metrics.csv` con quelli prodotti da PolarLab
-   (tolleranza: RR identici entro 0.5 ms).
-3. Solo dopo, test sul campo.
+## Verifying the iOS version
+1. Port the tests in `tests/test_pmd.py`, `test_hr_service.py`, `test_timebase.py` with the
+   same hexadecimal vectors (`plab selftest`).
+2. Non-regression: decode and analyse a `raw.plab` session recorded on the Mac and compare
+   `beats.csv` and `metrics.csv` with those produced by PolarLab (tolerance: identical RR
+   within 0.5 ms) — `scripts/compare_swift.py`.
+3. Only then, field tests.

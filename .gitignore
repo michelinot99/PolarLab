@@ -16,3 +16,7 @@ DerivedData/
 ios/AppCheck/Sources/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Pacchetti iPhone scaricati dalla CI
+*.ipa
+PolarLab-ipa/

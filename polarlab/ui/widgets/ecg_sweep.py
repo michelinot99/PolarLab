@@ -19,6 +19,23 @@ SMALL_UV, BIG_UV = 100.0, 500.0     # 1 mm e 5 mm a 10 mm/mV
 ERASE_S = 0.12
 
 
+def paper_grid(x0: float, x1: float, y0: float, y1: float, step_t: float, step_v: float):
+    """Segmenti (per `connect="pairs"`) della griglia da carta ECG nel rettangolo dato."""
+    xs = np.arange(np.ceil(x0 / step_t - 1e-6) * step_t, x1 + 1e-9, step_t)
+    ys = np.arange(np.floor(y0 / step_v) * step_v, y1 + step_v, step_v)
+    vx = np.repeat(xs, 2)
+    vy = np.tile([ys[0], ys[-1]], len(xs))
+    hx = np.tile([x0, x1], len(ys))
+    hy = np.repeat(ys, 2)
+    return np.concatenate([vx, hx]), np.concatenate([vy, hy])
+
+
+def paper_y_span(width_px: float, height_px: float, window_s: float, gain: float) -> float:
+    """Ampiezza verticale (µV) che rende quadrati i quadretti: 25 mm/s e 10·gain mm/mV."""
+    px_per_s = max(1.0, width_px) / window_s
+    return max(1.0, height_px) * BIG_UV / (BIG_S * px_per_s) / gain
+
+
 class EcgSweep(pg.GraphicsLayoutWidget):
     def __init__(self, window_s: float = 6.0):
         super().__init__()
@@ -65,22 +82,11 @@ class EcgSweep(pg.GraphicsLayoutWidget):
 
     def _y_span(self) -> float:
         vb = self.plot.getViewBox()
-        w, h = max(1.0, vb.width()), max(1.0, vb.height())
-        px_per_s = w / self.window_s
-        uv_per_px = BIG_UV / (BIG_S * px_per_s) / self.gain
-        return h * uv_per_px
+        return paper_y_span(vb.width(), vb.height(), self.window_s, self.gain)
 
     def _rebuild_grid(self, y0: float, y1: float) -> None:
-        def lines(step_t, step_v):
-            xs = np.arange(0.0, self.window_s + 1e-9, step_t)
-            ys = np.arange(np.floor(y0 / step_v) * step_v, y1 + step_v, step_v)
-            vx = np.repeat(xs, 2)
-            vy = np.tile([ys[0], ys[-1]], len(xs))
-            hx = np.tile([0.0, self.window_s], len(ys))
-            hy = np.repeat(ys, 2)
-            return np.concatenate([vx, hx]), np.concatenate([vy, hy])
-        self._minor.setData(*lines(SMALL_S, SMALL_UV))
-        self._major.setData(*lines(BIG_S, BIG_UV))
+        self._minor.setData(*paper_grid(0.0, self.window_s, y0, y1, SMALL_S, SMALL_UV))
+        self._major.setData(*paper_grid(0.0, self.window_s, y0, y1, BIG_S, BIG_UV))
 
     def update_data(self, ecg: np.ndarray, end_index: int, fs: float,
                     beat_idx: np.ndarray, connected: bool) -> None:

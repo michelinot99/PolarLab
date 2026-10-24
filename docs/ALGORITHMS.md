@@ -1,134 +1,137 @@
-# Algoritmi
+# Algorithms
 
-Tutti i processori lavorano **in streaming**: ricevono il blocco di campioni appena
-arrivato (`push`) e mantengono lo stato interno. Il costo per campione è costante, e le
-metriche su finestra (HRV, DFA, respirazione, cadenza) si ricalcolano a 0.2–1 Hz. È la
-struttura che serve su iPhone per non consumare batteria durante la corsa.
+All processors work **in streaming**: they receive the block of samples that just arrived
+(`push`) and keep their internal state. The cost per sample is constant, and the windowed
+metrics (HRV, DFA, breathing, cadence) are recomputed at 0.2–1 Hz. This is the structure the
+iPhone needs to avoid draining the battery during a run.
 
 ```
-ECG µV ─► passa-banda 0.5–40 Hz ─┬─► (notch 50 Hz) ─► monitor
-                                 ├─► QRS Pan-Tompkins ─► picco R sub-campione ─► RR
-                                 └─► battito medio / correlazione ─► qualità
-RR ─► correzione artefatti (Lipponen-Tarvainen) ─► NN ─► HRV (60 s), LF/HF (5 min), DFA α1 (2 min)
-RR + ampiezza R + ACC ─► respirazione
-ACC ─► verticale dalla gravità ─► cadenza, oscillazione verticale, intensità
-RR fascia (0x2A37) ─► confronto con i nostri RR ─► qualità
+ECG µV ─► band-pass 0.5–40 Hz ─┬─► (notch 50 Hz) ─► monitor
+                               ├─► Pan-Tompkins QRS ─► sub-sample R peak ─► RR
+                               └─► average beat / correlation ─► quality
+RR ─► artefact correction (Lipponen-Tarvainen) ─► NN ─► HRV (60 s), LF/HF (5 min), DFA α1 (2 min)
+RR + R amplitude + ACC ─► breathing
+ACC ─► vertical from gravity ─► cadence, vertical oscillation, intensity
+Strap RR (0x2A37) ─► comparison with our RR ─► quality
 ```
 
-## Filtri — `dsp/filters.py`
-* Passa-banda Butterworth 0.5–40 Hz (ordine 2 per lato), causale in SOS con stato.
-  0.5 Hz toglie la deriva da respiro e movimento, 40 Hz il rumore muscolare.
-* Notch IIR a 50 Hz (Q = 30) opzionale. A 130 Hz di campionamento i 50 Hz della rete sono
-  dentro la banda e quindi visibili.
-* Lo stato iniziale `sosfilt_zi · x[0]` evita il transitorio all'avvio.
-* `zero_phase_ecg` (filtfilt) è per l'analisi offline della morfologia.
+The analysis of a whole recorded session, built on top of these processors, is described in
+[ANALYSIS.md](ANALYSIS.md).
 
-## Rilevamento QRS — `dsp/qrs.py`
-Pan & Tompkins (IEEE TBME 1985), adattato a 130 Hz:
-1. passa-banda 5–15 Hz → derivata a 5 punti → quadrato → integrazione mobile su 150 ms;
-2. massimi locali della MWI confermati dopo 200 ms senza un valore più alto;
-3. soglie adattive `TH1 = NPKI + 0.25 (SPKI − NPKI)` e `TH2 = TH1/2`, apprese nei primi 2 s;
-4. refrattario di 200 ms; un candidato entro 360 ms con pendenza < 50% del QRS precedente
-   è un'onda T;
-5. search-back: se non arriva un battito entro 1.66 × RR medio, si accetta il picco di
-   rumore più alto sopra TH2;
-6. riapprendimento automatico dopo 3 s senza battiti (fascia staccata e rimessa);
-7. **localizzazione del picco R** sul segnale 0.5–40 Hz in una finestra di 300 ms prima
-   del picco MWI, con polarità appresa (e corretta a maggioranza se il QRS è invertito),
-   più **interpolazione gaussiana su 3 punti** (parabola sui logaritmi).
+## Filters — `dsp/filters.py`
+* Butterworth band-pass 0.5–40 Hz (order 2 per side), causal, SOS with state.
+  0.5 Hz removes the drift from breathing and movement, 40 Hz the muscle noise.
+* Optional IIR notch at 50 Hz (Q = 30). At a 130 Hz sample rate the 50 Hz mains hum is inside
+  the band and therefore visible.
+* The initial state `sosfilt_zi · x[0]` avoids the start-up transient.
+* `zero_phase_ecg` (filtfilt) is for offline morphology analysis.
 
-A 130 Hz un campione vale 7.7 ms: senza interpolazione l'errore di quantizzazione
-(±3.8 ms) sarebbe paragonabile all'RMSSD durante la corsa (3–10 ms).
-Sul simulatore il jitter robusto (MAD) del picco R è ~0.3 ms (`tests/test_dsp.py`).
-`scripts/validate_qrs.py` misura Se e +P sul MIT-BIH ricampionato a 130 Hz (22 ottobre 2026):
+## QRS detection — `dsp/qrs.py`
+Pan & Tompkins (IEEE TBME 1985), adapted to 130 Hz:
+1. band-pass 5–15 Hz → 5-point derivative → square → 150 ms moving-window integration;
+2. local maxima of the MWI confirmed after 200 ms without a higher value;
+3. adaptive thresholds `TH1 = NPKI + 0.25 (SPKI − NPKI)` and `TH2 = TH1/2`, learned in the first 2 s;
+4. 200 ms refractory period; a candidate within 360 ms whose slope is < 50% of the previous
+   QRS is a T wave;
+5. search-back: if no beat arrives within 1.66 × the mean RR, the highest noise peak above
+   TH2 is accepted;
+6. automatic re-learning after 3 s without beats (strap taken off and put back on);
+7. **R-peak localisation** on the 0.5–40 Hz signal in a 300 ms window before the MWI peak,
+   with learned polarity (corrected by majority if the QRS is inverted), plus
+   **3-point Gaussian interpolation** (a parabola on the logarithms).
 
-| Record | Battiti | Se | +P | Note |
+At 130 Hz one sample is 7.7 ms: without interpolation the quantisation error (±3.8 ms) would
+be comparable to the RMSSD while running (3–10 ms).
+On the simulator the robust (MAD) jitter of the R peak is ~0.3 ms (`tests/test_dsp.py`).
+`scripts/validate_qrs.py` measures Se and +P on MIT-BIH resampled to 130 Hz (22 October 2026):
+
+| Record | Beats | Se | +P | Notes |
 |---|---|---|---|---|
-| 100 | 931* | 100.00% | 100.00% | ritmo sinusale pulito |
-| 105 | 1525* | 99.87% | 99.80% | rumore e artefatti pesanti |
-| 203 | 2960 | 94.97% | 96.56% | fibrillazione atriale + tachicardia ventricolare, extrasistoli multiformi |
+| 100 | 931* | 100.00% | 100.00% | clean sinus rhythm |
+| 105 | 1525* | 99.87% | 99.80% | heavy noise and artefacts |
+| 203 | 2960 | 94.97% | 96.56% | atrial fibrillation + ventricular tachycardia, multiform ectopic beats |
 
-\* download parziale (rete lenta), valutato sulla parte scaricata. Errore di posizione: mediana
-+2.4 ms (ritardo costante, si annulla negli RR), IQR 2.5 ms.
-Nel 203 si perde ~20% dei battiti ventricolari larghi durante gli episodi di TV. Dimezzare le
-soglie nel ritmo irregolare o ammorbidire la regola dell'onda T sposta solo il compromesso
-Se/+P (provato: Se 96.1% ma +P 93.9%), quindi resta il Pan-Tompkins originale. Per una fascia
-toracica in ritmo sinusale, i casi rilevanti sono 100 e 105.
+\* partial download (slow network), evaluated on the downloaded part. Position error:
+median +2.4 ms (a constant delay, which cancels out in RR), IQR 2.5 ms.
+In record 203 about 20% of the wide ventricular beats are missed during VT episodes. Halving
+the thresholds in irregular rhythm or relaxing the T-wave rule only shifts the Se/+P trade-off
+(tried: Se 96.1% but +P 93.9%), so the original Pan-Tompkins stays. For a chest strap in sinus
+rhythm, the relevant cases are 100 and 105.
 
-## Correzione degli artefatti RR — `dsp/rr_clean.py`
-Lipponen & Tarvainen, J Med Eng Technol 2019 (è l'algoritmo di Kubios):
-* `dRR` normalizzato con 5.2 × quartile deviation su 91 battiti;
-* differenza dalla mediana su 11 battiti (`mRR`, valori negativi raddoppiati);
-* classificazione con le regioni S11/S12 (ectopici) e S21/S22 (lungo/corto) e i test
-  "battito mancato" (RR/2 ≈ mediana) ed "extra" (RR + RR successivo ≈ mediana).
+## RR artefact correction — `dsp/rr_clean.py`
+Lipponen & Tarvainen, J Med Eng Technol 2019 (the algorithm used by Kubios):
+* `dRR` normalised by 5.2 × the quartile deviation over 91 beats;
+* difference from the median over 11 beats (`mRR`, negative values doubled);
+* classification with the S11/S12 (ectopic) and S21/S22 (long/short) regions and the
+  "missed beat" (RR/2 ≈ median) and "extra beat" (RR + next RR ≈ median) tests.
 
-Versione causale: ogni intervallo si classifica appena arrivano i 2 successivi, con
-statistiche calcolate sulla finestra che termina lì. Correzioni: battito mancato → due
-intervalli da RR/2; extra → fusione dei due; ectopico/lungo-corto → mediana locale.
-Soglia minima di 15 ms su entrambe le soglie, così con la variabilità bassissima della corsa i
-battiti normali non vengono segnalati per pochi millisecondi.
+Causal version: each interval is classified as soon as the next 2 arrive, with statistics
+computed on the window that ends there. Corrections: missed beat → two intervals of RR/2;
+extra beat → the two are merged; ectopic/long-short → local median.
+A minimum threshold of 15 ms applies to both thresholds, so that with the very low variability
+of running, normal beats are not flagged for a few milliseconds.
 
-Gli intervalli che attraversano un buco di pacchetti (riempito per continuità) sono marcati
-`invalid` ed esclusi dall'HRV.
+Intervals that span a packet gap (filled for continuity) are marked `invalid` and excluded
+from HRV.
 
 ## HRV — `dsp/hrv.py`
-* Dominio del tempo su 60 s: media NN, SDNN, RMSSD, pNN50; Poincaré SD1 = √½·sd(ΔNN),
+* Time domain over 60 s: mean NN, SDNN, RMSSD, pNN50; Poincaré SD1 = √½·sd(ΔNN),
   SD2 = √(2·SDNN² − SD1²).
-* Frequenza su 5 min: spline cubica a 4 Hz, detrend, Welch (Hann), LF 0.04–0.15 Hz,
-  HF 0.15–0.40 Hz in ms². Nella corsa la respirazione supera spesso 0.4 Hz, quindi l'HF
-  "classica" perde significato: per questo si riporta anche il picco respiratorio.
-  (Ho scelto ricampionamento + Welch invece di Lomb-Scargle, previsto all'inizio, perché dà
-  direttamente potenze in ms² con normalizzazione standard.)
+* Frequency domain over 5 min: cubic spline at 4 Hz, detrend, Welch (Hann), LF 0.04–0.15 Hz,
+  HF 0.15–0.40 Hz in ms². While running, breathing often exceeds 0.4 Hz, so the "classic" HF
+  loses its meaning: this is why the respiratory peak is reported too.
+  (Resampling + Welch was chosen over Lomb-Scargle, the initial plan, because it directly
+  gives powers in ms² with standard normalisation.)
 
 ## DFA α1 — `dsp/dfa.py`
-Peng et al. 1995; in ambito sportivo Rogers et al. 2021 (Front. Physiol.).
-Integrazione della serie NN, finestre non sovrapposte da 4 a 16 battiti prese sia
-dall'inizio sia dalla fine, detrend lineare, pendenza log-log di F(n). Finestra mobile di
-2 minuti, ricalcolata ogni 5 s.
-* α1 ≥ 0.75 → sotto la soglia aerobica (VT1)
-* 0.5 – 0.75 → tra VT1 e VT2
-* < 0.5 → oltre la soglia anaerobica
+Peng et al. 1995; in sport, Rogers et al. 2021 (Front. Physiol.).
+Integration of the NN series, non-overlapping windows from 4 to 16 beats taken from both the
+start and the end, linear detrend, log-log slope of F(n). 2-minute moving window, recomputed
+every 5 s.
+* α1 ≥ 0.75 → below the aerobic threshold (VT1)
+* 0.5 – 0.75 → between VT1 and VT2
+* < 0.5 → above the anaerobic threshold
 
-È molto sensibile agli artefatti: oltre il 3–5% di battiti corretti il valore non è
-affidabile (la percentuale è mostrata in "Artefatti").
-Validazione: rumore bianco → 0.5, rumore 1/f → 1.0, rumore browniano → 1.5 (`tests/test_dsp.py`).
+It is very sensitive to artefacts: above 3–5% corrected beats the value is not reliable
+(the percentage is shown as "Artefatti").
+Validation: white noise → 0.5, 1/f noise → 1.0, Brownian noise → 1.5 (`tests/test_dsp.py`).
 
-## Qualità del segnale — `dsp/quality.py`, `dsp/template.py`
-* **Battito medio**: media dei battiti allineati sul picco R, con allineamento sub-campione
-  (i primi 8 in media aritmetica, poi media esponenziale α = 0.08 solo per i battiti con
-  r ≥ 0.7). Mostra la morfologia P-QRS-T anche quando il singolo battito è rumoroso.
-* **Correlazione battito-template** (mediana degli ultimi 20 battiti).
-* **Accordo con la fascia**: la H10 calcola i propri RR con un algoritmo interno. Siccome la
-  0x2A37 non ha timestamp, le due sequenze si allineano cercando lo sfasamento (±6 battiti)
-  con il minimo errore medio. Due stime indipendenti che coincidono sono il miglior
-  indizio di un RR corretto.
-* Segnale piatto/saturo e flag di contatto della 0x2A37.
-* Punteggio 0–100 = 50% correlazione + 35% accordo + 15% contatto.
+## Signal quality — `dsp/quality.py`, `dsp/template.py`
+* **Average beat**: mean of the beats aligned on the R peak, with sub-sample alignment
+  (the first 8 as an arithmetic mean, then an exponential mean α = 0.08 only for beats with
+  r ≥ 0.7). It shows the P-QRS-T morphology even when each single beat is noisy.
+* **Beat-template correlation** (median of the last 20 beats).
+* **Agreement with the strap**: the H10 computes its own RR intervals with an internal
+  algorithm. Since 0x2A37 has no timestamp, the two sequences are aligned by looking for the
+  lag (±6 beats) with the minimum mean error. Two independent estimates that agree are the best
+  sign of a correct RR.
+* Flat/saturated signal and the contact flag of 0x2A37.
+* Score 0–100 = 50% correlation + 35% agreement + 15% contact.
 
-## Respirazione — `dsp/respiration.py`
-Tre stime, ciascuna come picco spettrale (Welch) in 0.1–1 Hz su 60 s, con prominenza come
-confidenza:
-1. **EDR**: modulazione dell'ampiezza R;
-2. **RSA**: modulazione degli RR (aritmia sinusale respiratoria);
-3. **ACC**: componente principale del movimento lento del torace (decimato a 10 Hz).
+## Breathing — `dsp/respiration.py`
+Three estimates, each as a spectral peak (Welch) in 0.1–1 Hz over 60 s, with prominence as
+confidence:
+1. **EDR**: modulation of the R amplitude;
+2. **RSA**: modulation of the RR intervals (respiratory sinus arrhythmia);
+3. **ACC**: principal component of the slow chest movement (decimated to 10 Hz).
 
-Le serie per battito sono campionate alla frequenza cardiaca, quindi vedono respiri solo
-fino a FC/2: a riposo, con FC 60, non oltre 30 atti/min. L'ACC non ha questo limite.
-Fusione: si sceglie la stima più prominente e si mediano quelle che concordano entro 3 atti/min.
+Per-beat series are sampled at the heart rate, so they only see breaths up to HR/2: at rest,
+with HR 60, no more than 30 breaths/min. The ACC has no such limit.
+Fusion: the most prominent estimate is chosen and those agreeing within 3 breaths/min are averaged.
 
-## Movimento — `dsp/motion.py`
-* L'ACC entra già ricampionato alla frequenza nominale con i timestamp della fascia
-  (`UniformResampler`, interpolazione lineare): il quarzo della H10 va ~2% più veloce.
-* Verticale = direzione della componente lenta (< 0.3 Hz) del vettore accelerazione: un
-  accelerometro fermo misura +1 g verso l'alto, qualunque sia l'orientamento della fascia.
-* Cadenza: autocorrelazione dell'accelerazione verticale (filtrata 1–6 Hz) su 8 s, picco
-  tra 0.25 e 0.75 s (80–240 passi/min) con interpolazione parabolica. Se c'è un picco forte
-  a metà ritardo, il primo era la falcata (2 passi) e si usa il passo.
-* Oscillazione verticale: doppia integrazione con passa-alto prima e dopo ogni
-  integrazione (per evitare la deriva), mediana dei picco-picco per passo. È una **stima**:
-  va confrontata con una sorgente di riferimento (Garmin HRM-Pro, Stryd) prima di fidarsi.
+## Motion — `dsp/motion.py`
+* The ACC arrives already resampled to the nominal rate using the strap's timestamps
+  (`UniformResampler`, linear interpolation): the H10 crystal runs ~2% fast.
+* Vertical = direction of the slow (< 0.3 Hz) component of the acceleration vector: a still
+  accelerometer measures +1 g upwards, whatever the orientation of the strap.
+* Cadence: autocorrelation of the vertical acceleration (filtered 1–6 Hz) over 8 s, peak
+  between 0.25 and 0.75 s (80–240 steps/min) with parabolic interpolation. If there is a strong
+  peak at half the lag, the first one was the stride (2 steps) and the step is used.
+* Vertical oscillation: double integration with a high-pass before and after each
+  integration (to avoid drift), median of the peak-to-peak per step. It is an **estimate**:
+  compare it with a reference source (Garmin HRM-Pro, Stryd) before trusting it.
 
-## Riferimenti
+## References
 * Pan J, Tompkins WJ. A real-time QRS detection algorithm. IEEE TBME 1985.
 * Lipponen JA, Tarvainen MP. A robust algorithm for HRV time series artefact correction
   using novel beat classification. J Med Eng Technol 2019.

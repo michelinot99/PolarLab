@@ -1,5 +1,5 @@
 # Compila l'app iPhone su un Mac di GitHub e pubblica un .ipa non firmato,
-# da installare con Sideloadly (che lo firma con il proprio Apple ID).
+# da installare con AltStore o Sideloadly (che lo firmano con il proprio Apple ID).
 name: iPhone
 
 on:

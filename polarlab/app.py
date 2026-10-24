@@ -31,9 +31,11 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--replay", type=Path, metavar="DIR", help="riproduce una sessione registrata")
     g.add_argument("--h10", action="store_true", help="si collega subito alla fascia")
     ap.add_argument("--speed", type=float, default=1.0, help="velocità di simulatore/replay (default 1)")
+    ap.add_argument("--open-session", type=Path, metavar="DIR", help="apre l'analisi di una sessione")
+    ap.add_argument("paths", nargs="*", type=Path, help=argparse.SUPPRESS)   # zip aperti con l'app
     ap.add_argument("--screenshot", type=Path, help=argparse.SUPPRESS)
     ap.add_argument("--screenshot-after", type=float, default=20.0, help=argparse.SUPPRESS)
-    args = ap.parse_args(argv)
+    args, _ = ap.parse_known_args(argv)   # macOS può aggiungere argomenti propri (-psn_…)
 
     if sys.platform == "darwin" and _qt_plugins_hidden():
         print("I plugin Qt sono marcati come nascosti (iCloud su una cartella che inizia con '.').\n"
@@ -41,25 +43,66 @@ def main(argv: list[str] | None = None) -> int:
               "venv.nosync/bin/pip install -r requirements.txt", file=sys.stderr)
         return 1
     import pyqtgraph as pg
-    from PySide6.QtCore import QTimer
-    from PySide6.QtGui import QFont
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtCore import QEvent, QTimer
+    from PySide6.QtGui import QFont, QIcon
+    from PySide6.QtWidgets import QApplication, QMessageBox
 
     from polarlab.ui import theme
-    from polarlab.ui.main_window import SRC_H10, SRC_REPLAY, SRC_SIM, MainWindow
+    from polarlab.ui.main_window import SRC_H10, SRC_SIM, MainWindow
 
     pg.setConfigOptions(antialias=True, foreground=theme.MUTED, background=theme.SURFACE)
-    app = QApplication(sys.argv[:1])
+
+    class App(QApplication):
+        """Riceve i file aperti dal Finder o trascinati sull'icona nel Dock (QFileOpenEvent)."""
+
+        def __init__(self, argv):
+            super().__init__(argv)
+            self.window = None
+            self.pending: list[Path] = []
+
+        def event(self, ev):
+            if ev.type() == QEvent.FileOpen:
+                path = Path(ev.file())
+                # AppKit consegna come "file da aprire" anche gli argomenti della riga di comando
+                # (per esempio il PNG di --screenshot): si accettano solo zip e cartelle di sessione
+                if str(path) in sys.argv or not (path.suffix.lower() == ".zip" or path.is_dir()):
+                    return True
+                if self.window is not None:
+                    self.window.open_paths([path])
+                else:
+                    self.pending.append(path)
+                return True
+            return super().event(ev)
+
+    app = App(sys.argv[:1])
     app.setApplicationName("PolarLab")
+    icon = Path(__file__).resolve().parents[1] / "ios" / "App" / "Resources" / "Assets.xcassets" / \
+        "AppIcon.appiconset" / "icon-1024.png"
+    if icon.exists():
+        app.setWindowIcon(QIcon(str(icon)))
     app.setFont(QFont(".AppleSystemUIFont", 13))
     app.setStyleSheet(theme.STYLESHEET)
 
     win = MainWindow(sim_speed=args.speed)
     win.show()
+    app.window = win
+
+    def excepthook(kind, exc, tb):
+        # Senza Terminale (app nel Dock) un errore non gestito sarebbe invisibile
+        import traceback
+        text = "".join(traceback.format_exception(kind, exc, tb))
+        print(text, file=sys.stderr, flush=True)
+        QMessageBox.critical(win, "Errore", f"{kind.__name__}: {exc}\n\nDettagli nel log di PolarLab.")
+    sys.excepthook = excepthook
+
+    if app.pending or args.paths:
+        win.open_paths(app.pending + list(args.paths))
+    elif args.open_session:
+        win.open_session(args.open_session)
     if args.sim:
         win.start_source(kind=SRC_SIM)
     elif args.replay:
-        win.start_source(replay_dir=args.replay, kind=SRC_REPLAY)
+        win.play_session(args.replay)
     elif args.h10:
         win.start_source(kind=SRC_H10)
 

@@ -63,6 +63,35 @@ QListWidget::item {{ padding: 8px; }}
 QListWidget::item:selected {{ background: {AXIS}; }}
 QDialog {{ background: {PAGE}; }}
 QToolTip {{ background: {SURFACE_2}; color: {INK}; border: 1px solid {BORDER}; }}
+QPushButton#seg {{ border-radius: 0; padding: 6px 16px; background: {SURFACE}; color: {INK_2}; }}
+QPushButton#seg:checked {{ background: {AXIS}; color: {INK}; font-weight: 600; }}
+QPushButton#segL {{ border-top-right-radius: 0; border-bottom-right-radius: 0; padding: 6px 16px;
+    background: {SURFACE}; color: {INK_2}; }}
+QPushButton#segR {{ border-top-left-radius: 0; border-bottom-left-radius: 0; padding: 6px 16px;
+    background: {SURFACE}; color: {INK_2}; }}
+QPushButton#segL:checked, QPushButton#segR:checked {{ background: {AXIS}; color: {INK}; font-weight: 600; }}
+QPushButton#link {{ background: transparent; border: none; color: {SERIES_1}; padding: 2px 4px; }}
+QFrame#banner {{ background: {SURFACE_2}; border: 1px solid {SERIES_1}; border-radius: 10px; }}
+QLabel#h1 {{ color: {INK}; font-size: 20px; font-weight: 700; }}
+QLabel#disclaimer {{ color: {MUTED}; font-size: 11px; }}
+QScrollArea, QScrollArea > QWidget > QWidget {{ background: {PAGE}; border: none; }}
+QScrollBar:vertical {{ background: {PAGE}; width: 10px; margin: 0; }}
+QScrollBar:horizontal {{ background: {SURFACE_2}; height: 12px; margin: 0; border-radius: 6px; }}
+QScrollBar::handle {{ background: {AXIS}; border-radius: 5px; min-height: 24px; min-width: 24px; }}
+QScrollBar::handle:hover {{ background: {MUTED}; }}
+QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
+QTableWidget {{ background: {SURFACE}; border: none; gridline-color: {BORDER}; color: {INK};
+    selection-background-color: {AXIS}; selection-color: {INK}; }}
+QHeaderView::section {{ background: {SURFACE}; color: {MUTED}; border: none; border-bottom: 1px solid {BORDER};
+    padding: 4px 6px; font-size: 11px; font-weight: 600; }}
+QTableCornerButton::section {{ background: {SURFACE}; border: none; }}
+QProgressBar {{ background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: 4px; height: 8px; }}
+QProgressBar::chunk {{ background: {SERIES_1}; border-radius: 4px; }}
+QSpinBox, QLineEdit {{ background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: 6px; padding: 4px 8px;
+    color: {INK}; }}
+QMenu {{ background: {SURFACE_2}; color: {INK}; border: 1px solid {BORDER}; }}
+QMenu::item:selected {{ background: {AXIS}; }}
 """
 
 
@@ -76,3 +105,7 @@ def alpha1_color(a1: float) -> str:
     if a1 != a1:
         return MUTED
     return GOOD if a1 >= 0.75 else WARNING if a1 >= 0.5 else CRITICAL
+
+
+LEVEL_COLORS = {"serious": CRITICAL, "warning": WARNING, "info": MUTED}
+LEVEL_LABELS = {"serious": "da rivedere", "warning": "da notare", "info": "dati"}

@@ -1,4 +1,4 @@
-"""Finestra principale."""
+"""Finestra principale: monitor in diretta (Live) e archivio con l'analisi delle sessioni (Sessioni)."""
 
 from __future__ import annotations
 
@@ -7,9 +7,10 @@ import threading
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QTimer
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QMainWindow,
-                               QMessageBox, QPushButton, QSizePolicy, QStatusBar, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QLabel, QMainWindow,
+                               QMessageBox, QPushButton, QSizePolicy, QStackedWidget, QStatusBar, QVBoxLayout, QWidget)
 
+from polarlab.analysis.report import Profile
 from polarlab.core.engine import Engine
 from polarlab.core.pipeline import SESSIONS_DIR, Pipeline
 from polarlab.dsp.dfa import alpha1_zone
@@ -17,8 +18,10 @@ from polarlab.sources.base import SourceState
 from polarlab.ui import theme
 from polarlab.ui.widgets.charts import MotionCard, PoincareCard, TachogramCard, TemplateCard
 from polarlab.ui.widgets.common import Card, Chip, KeyValueGrid, Tile, fmt
+from polarlab.ui.sessions_view import SessionsView
 from polarlab.ui.widgets.device_dialog import DeviceDialog
 from polarlab.ui.widgets.ecg_sweep import EcgSweep
+from polarlab.ui.widgets.settings_dialog import SettingsDialog
 
 SRC_H10, SRC_SIM, SRC_REPLAY = "Polar H10", "Simulatore", "Replay sessione…"
 STATE_COLORS = {
@@ -37,8 +40,11 @@ class MainWindow(QMainWindow):
         self.sim_speed = sim_speed
         self.pipeline: Pipeline | None = None
         self.replay_dir: Path | None = None
+        self.replay_start = 0.0
+        self.sessions_dir = Path(self.settings.value("sessions_dir", "") or SESSIONS_DIR)
         self._frame = 0
         self._build()
+        self.setAcceptDrops(True)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._refresh)
         self.timer.start(33)
@@ -54,9 +60,16 @@ class MainWindow(QMainWindow):
         outer.setSpacing(12)
         outer.addLayout(self._toolbar())
 
-        body = QHBoxLayout()
+        self.pages = QStackedWidget()
+        outer.addWidget(self.pages, 1)
+        live = QWidget()
+        body = QHBoxLayout(live)
+        body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(12)
-        outer.addLayout(body, 1)
+        self.pages.addWidget(live)
+        self.sessions = SessionsView(self.sessions_dir, self._profile())
+        self.sessions.replay_requested.connect(self.play_session)
+        self.pages.addWidget(self.sessions)
 
         left = QVBoxLayout()
         left.setSpacing(12)
@@ -129,7 +142,30 @@ class MainWindow(QMainWindow):
         brand = QLabel("PolarLab")
         brand.setObjectName("brand")
         bar.addWidget(brand)
+        bar.addSpacing(8)
+        self.mode = QButtonGroup(self)
+        seg = QHBoxLayout()
+        seg.setSpacing(0)
+        for i, (text, obj) in enumerate((("Live", "segL"), ("Sessioni", "segR"))):
+            b = QPushButton(text)
+            b.setObjectName(obj)
+            b.setCheckable(True)
+            self.mode.addButton(b, i)
+            seg.addWidget(b)
+        self.mode.button(0).setChecked(True)
+        self.mode.idClicked.connect(self.show_page)
+        bar.addLayout(seg)
         bar.addSpacing(12)
+        self.live_bar = QWidget()
+        lb = QHBoxLayout(self.live_bar)
+        lb.setContentsMargins(0, 0, 0, 0)
+        lb.setSpacing(10)
+        bar.addWidget(self.live_bar, 1)
+        self.sessions_msg = QLabel("")
+        self.sessions_msg.setObjectName("muted")
+        self.sessions_msg.hide()
+        bar.addWidget(self.sessions_msg, 1)
+        outer_bar, bar = bar, lb
         self.source = QComboBox()
         self.source.addItems([SRC_H10, SRC_SIM, SRC_REPLAY])
         saved = self.settings.value("source", SRC_H10)
@@ -144,6 +180,13 @@ class MainWindow(QMainWindow):
         self.connect_btn.setObjectName("primary")
         self.connect_btn.clicked.connect(self._toggle_connection)
         bar.addWidget(self.connect_btn)
+        self.speed = QComboBox()
+        for x in (1, 2, 4, 8, 16):
+            self.speed.addItem(f"×{x}", float(x))
+        self.speed.setToolTip("Velocità del replay")
+        self.speed.setCurrentIndex(max(0, self.speed.findData(float(self.sim_speed))))
+        self.speed.currentIndexChanged.connect(self._on_speed)
+        bar.addWidget(self.speed)
         self.state_chip = Chip()
         bar.addWidget(self.state_chip)
         self.state_msg = QLabel("")
@@ -156,11 +199,11 @@ class MainWindow(QMainWindow):
         self.rec_btn.setEnabled(False)
         self.rec_btn.toggled.connect(self._toggle_record)
         bar.addWidget(self.rec_btn)
-        self.sessions_btn = QPushButton("Sessioni")
-        self.sessions_btn.clicked.connect(lambda: self._open_folder(SESSIONS_DIR))
-        bar.addWidget(self.sessions_btn)
         self._on_source_changed(self.source.currentText())
-        return bar
+        settings_btn = QPushButton("Impostazioni")
+        settings_btn.clicked.connect(self._open_settings)
+        outer_bar.addWidget(settings_btn)
+        return outer_bar
 
     def _device_label(self) -> str:
         return "Fascia: memorizzata" if self.address else "Fascia: qualsiasi H10"
@@ -169,6 +212,7 @@ class MainWindow(QMainWindow):
 
     def _on_source_changed(self, text: str) -> None:
         self.device_btn.setVisible(text == SRC_H10)
+        self.speed.setVisible(text == SRC_REPLAY)
         if text in (SRC_H10, SRC_SIM):
             self.settings.setValue("source", text)
 
@@ -186,12 +230,12 @@ class MainWindow(QMainWindow):
             return SimulatedSource(speed=self.sim_speed)
         if kind == SRC_REPLAY:
             if self.replay_dir is None:
-                d = QFileDialog.getExistingDirectory(self, "Scegli una sessione", str(SESSIONS_DIR))
-                if not d:
-                    return None
-                self.replay_dir = Path(d)
+                self.show_page(1)
+                self.sessions_msg.setText("Scegli una sessione e premi «▶ Riproduci»")
+                return None
             from polarlab.sources.replay import ReplaySource
-            src, self.replay_dir = ReplaySource(self.replay_dir, speed=self.sim_speed), None
+            src = ReplaySource(self.replay_dir, speed=self.speed.currentData(), start_s=self.replay_start)
+            self.replay_dir, self.replay_start = None, 0.0
             return src
         from polarlab.sources.polar_ble import PolarH10Source
         return PolarH10Source(address=self.address)
@@ -219,7 +263,7 @@ class MainWindow(QMainWindow):
             return
         engine = Engine()
         engine.notch_enabled = self.notch.isChecked()
-        self.pipeline = Pipeline(src, engine)
+        self.pipeline = Pipeline(src, engine, sessions_dir=self.sessions_dir)
         self.pipeline.start()
         self.connect_btn.setText("Disconnetti")
         self.rec_btn.setEnabled(True)
@@ -239,10 +283,77 @@ class MainWindow(QMainWindow):
             self.pipeline.stop_recording()
             self.rec_btn.setText("● Registra")
 
-    def _open_folder(self, path: Path) -> None:
-        import subprocess
-        path.mkdir(parents=True, exist_ok=True)
-        subprocess.Popen(["open", str(path)])
+    # ------------------------------------------------------------------ pagine, sessioni, impostazioni
+
+    def show_page(self, i: int) -> None:
+        self.pages.setCurrentIndex(i)
+        self.mode.button(i).setChecked(True)
+        self.live_bar.setVisible(i == 0)
+        self.sessions_msg.setVisible(i == 1)
+        self.statusBar().setVisible(i == 0)
+        if i == 1:
+            self.sessions.refresh()
+        else:
+            self.sessions_msg.setText("")
+
+    def open_session(self, d: Path) -> None:
+        self.show_page(1)
+        self.sessions.select(Path(d))
+
+    def open_paths(self, paths: list[Path]) -> None:
+        """Zip o cartelle trascinati sulla finestra o sull'icona nel Dock: si importano nell'archivio."""
+        self.show_page(1)
+        self.sessions.import_paths([Path(p) for p in paths])
+
+    def play_session(self, d: Path, start_s: float = 0.0) -> None:
+        if self.pipeline is not None:
+            if self.rec_btn.isChecked() and QMessageBox.question(
+                    self, "Registrazione in corso", "Interrompere la registrazione per avviare il replay?") \
+                    != QMessageBox.Yes:
+                return
+            self._toggle_connection()
+        self.source.setCurrentText(SRC_REPLAY)
+        self.replay_dir, self.replay_start = Path(d), start_s
+        self.show_page(0)
+        self._toggle_connection()
+
+    def _on_speed(self, _=None) -> None:
+        src = self.pipeline.source if self.pipeline is not None else None
+        if src is not None and hasattr(src, "speed"):
+            src.speed = self.speed.currentData()
+
+    def _profile(self) -> Profile:
+        def num(key):
+            try:
+                v = float(self.settings.value(key, 0) or 0)
+            except (TypeError, ValueError):
+                v = 0.0
+            return v or None
+        return Profile(hr_max=num("hr_max"), hr_rest=num("hr_rest"))
+
+    def _open_settings(self) -> None:
+        dlg = SettingsDialog(self, self._profile(), self.sessions_dir, SESSIONS_DIR)
+        if not dlg.exec():
+            return
+        prof = dlg.profile
+        self.settings.setValue("hr_max", prof.hr_max or 0)
+        self.settings.setValue("hr_rest", prof.hr_rest or 0)
+        self.sessions.set_profile(prof)
+        new_dir = dlg.sessions_dir
+        if new_dir != self.sessions_dir:
+            self.sessions_dir = new_dir
+            self.settings.setValue("sessions_dir", "" if new_dir == SESSIONS_DIR else str(new_dir))
+            self.sessions.set_sessions_dir(new_dir)
+
+    def dragEnterEvent(self, ev) -> None:
+        urls = [u.toLocalFile() for u in ev.mimeData().urls()] if ev.mimeData().hasUrls() else []
+        if any(u.endswith(".zip") or Path(u).is_dir() for u in urls if u):
+            ev.acceptProposedAction()
+
+    def dropEvent(self, ev) -> None:
+        paths = [Path(u.toLocalFile()) for u in ev.mimeData().urls() if u.toLocalFile()]
+        if paths:
+            self.open_paths(paths)
 
     # ------------------------------------------------------------------ aggiornamento
 
@@ -310,7 +421,7 @@ class MainWindow(QMainWindow):
             self.rec_btn.setText(f"■ {el // 60:02d}:{el % 60:02d}")
         if p.last_export is not None:
             done, p.last_export = p.last_export, None
-            self.statusBar().showMessage(f"Sessione salvata ed esportata in {done}", 8000)
+            self.statusBar().showMessage(f"Sessione salvata ed esportata in {done} · la trovi in Sessioni", 8000)
         if p.export_error:
             QMessageBox.warning(self, "Esportazione", p.export_error)
             p.export_error = None
