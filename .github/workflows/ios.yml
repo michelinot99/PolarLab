@@ -1,0 +1,58 @@
+# Compila l'app iPhone su un Mac di GitHub e pubblica un .ipa non firmato,
+# da installare con Sideloadly (che lo firma con il proprio Apple ID).
+name: iPhone
+
+on:
+  push:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versioni
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Autotest di PolarKit
+        working-directory: ios/PolarKit
+        run: swift run -c release plab selftest
+
+      - name: Progetto Xcode
+        working-directory: ios
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+
+      - name: Compilazione per iPhone (senza firma)
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/PolarLab.xcodeproj -scheme PolarLab -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tee build.log | grep -E "error:|warning: .*Sources|BUILD (SUCCEEDED|FAILED)" || true
+          test -d build/Build/Products/Release-iphoneos/PolarLab.app
+
+      - name: Pacchetto .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/PolarLab.app Payload/
+          zip -qr PolarLab.ipa Payload
+          ls -lh PolarLab.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PolarLab-ipa
+          path: PolarLab.ipa
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-log
+          path: build.log
