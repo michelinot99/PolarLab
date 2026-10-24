@@ -32,6 +32,7 @@ run.
 - [Project layout](#project-layout)
 - [Tests](#tests)
 - [Further documentation](#further-documentation)
+- [License](#license)
 
 ## Features
 
@@ -247,3 +248,7 @@ Swift port checks (no Xcode needed) are in [ios/README.md](ios/README.md#verific
 - [docs/ANALYSIS.md](docs/ANALYSIS.md): the whole-session analysis and the events to review
 - [docs/IOS_PORTING.md](docs/IOS_PORTING.md): how the Python code maps to Swift
 - [ios/README.md](ios/README.md): the iPhone app, installation and verification
+
+## License
+[MIT](LICENSE) © 2026 Michele Ivo Galella. PolarLab is not affiliated with or endorsed by
+Polar Electro. "Polar" and "H10" are trademarks of their respective owner.
