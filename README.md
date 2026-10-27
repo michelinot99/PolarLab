@@ -153,21 +153,26 @@ Choose one of these:
 | Method | What you need | Refresh every 7 days |
 |---|---|---|
 | **Xcode** | Mac with Xcode, cable | Press ▶︎ in Xcode again |
+| **Impactor** | [Impactor](https://github.com/khcrysalis/Impactor/releases) on the Mac, an `.ipa`, cable | Re-install with Impactor |
 | **AltStore** | AltServer on the Mac, AltStore on the iPhone, an `.ipa` | Automatic over Wi-Fi when AltServer is running |
 | **Sideloadly** | Sideloadly on the Mac, an `.ipa` | Re-install with Sideloadly |
+
+The **Apple Health export** needs Xcode or Impactor: AltStore drops the HealthKit entitlement,
+so the *Salute* tab stays empty. Sideloadly has not been tested with HealthKit.
 
 **Getting an `.ipa` without Xcode**: every push that touches `ios/` runs the
 [*iPhone* GitHub Actions workflow](.github/workflows/ios.yml). It builds an **unsigned**
 `PolarLab.ipa` on a GitHub-hosted Mac and attaches it to the run as the `PolarLab-ipa`
-artifact. AltStore and Sideloadly sign it with your Apple ID during installation. To download
+artifact. Impactor, AltStore and Sideloadly sign it with your Apple ID during installation. To download
 it, sign in to GitHub, go to *Actions → iPhone → latest run → Artifacts*, or use:
 ```bash
 gh run download -R michelinot99/PolarLab -n PolarLab-ipa
 ```
 If you use a fork, run the workflow there (*Actions → iPhone → Run workflow*).
 
+**With Impactor**: sign in with your Apple ID, connect the iPhone and drop in `PolarLab.ipa`.
 **With AltStore**: connect the iPhone, then ⌥-click the AltServer menu-bar icon →
-*Sideload .ipa…* → choose your iPhone and `PolarLab.ipa`. On the iPhone, turn on
+*Sideload .ipa…* → choose your iPhone and `PolarLab.ipa`. Either way, on the iPhone turn on
 *Settings → Privacy & Security → Developer Mode* and, if asked, trust your Apple ID under
 *Settings → General → VPN & Device Management*.
 

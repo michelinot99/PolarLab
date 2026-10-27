@@ -1,5 +1,5 @@
 # Compila l'app iPhone su un Mac di GitHub e pubblica un .ipa non firmato,
-# da installare con AltStore o Sideloadly (che lo firmano con il proprio Apple ID).
+# da installare con Impactor, AltStore o Sideloadly (che lo firmano con il proprio Apple ID).
 name: iPhone
 
 on:
@@ -42,8 +42,8 @@ jobs:
         run: |
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/PolarLab.app Payload/
-          # Firma ad-hoc solo per incorporare gli entitlement (HealthKit): AltStore e Sideloadly
-          # li leggono dall'app e li riportano nella firma con il tuo Apple ID.
+          # Firma ad-hoc solo per incorporare gli entitlement (HealthKit): Impactor li legge dall'app,
+          # abilita HealthKit sull'App ID e li riporta nella firma (AltStore invece li scarta).
           codesign --force --sign - --entitlements ios/App/PolarLab.entitlements Payload/PolarLab.app
           codesign -d --entitlements - Payload/PolarLab.app | grep -q healthkit
           zip -qr PolarLab.ipa Payload

@@ -41,8 +41,9 @@ After 7 days, reconnect the iPhone and press ▶︎ again.
 Without a strap you can try everything in the Xcode **simulator** with «Prova senza fascia
 (demo)», which loops a real H10 recording.
 
-### Option B: AltStore or Sideloadly (no Xcode)
-Both tools sign an `.ipa` with your Apple ID and install it.
+### Option B: Impactor, AltStore or Sideloadly (no Xcode)
+These tools sign an `.ipa` with your Apple ID and install it. Use **Impactor** if you want the
+[Apple Health export](#apple-health-export): AltStore drops the HealthKit entitlement.
 
 1. **Get `PolarLab.ipa`.** The [*iPhone* workflow](../.github/workflows/ios.yml) builds an
    unsigned `.ipa` on GitHub Actions for every push that touches `ios/` (or on demand:
@@ -51,7 +52,12 @@ Both tools sign an `.ipa` with your Apple ID and install it.
    ```bash
    gh run download -R michelinot99/PolarLab -n PolarLab-ipa
    ```
-2. **AltStore**: install [AltServer](https://altstore.io) on the Mac and AltStore on the iPhone
+2. **Impactor**: download `Impactor-macos-universal.dmg` from the
+   [Impactor releases](https://github.com/khcrysalis/Impactor/releases) (open source,
+   notarized), sign in with your Apple ID, connect the iPhone, drop in `PolarLab.ipa` and
+   install. To refresh after 7 days, install it again the same way.
+
+   **AltStore**: install [AltServer](https://altstore.io) on the Mac and AltStore on the iPhone
    (follow their guide), connect the iPhone, then ⌥-click the AltServer menu-bar icon →
    **Sideload .ipa…** → choose your iPhone and `PolarLab.ipa`.
    Alternatively, AirDrop the `.ipa` to the iPhone and add it from AltStore → **My Apps** → **+**.
@@ -65,7 +71,10 @@ Both tools sign an `.ipa` with your Apple ID and install it.
    if the app says "Untrusted Developer", trust your Apple ID under
    **Settings → General → VPN & Device Management**.
 
-To update, download the new `.ipa` and sideload it again: the app is replaced and its data kept.
+To update, download the new `.ipa` and sideload it again with the same tool: the app is
+replaced and its data kept. Switching tools can install a second copy, because AltStore appends
+your team ID to the bundle identifier and Impactor keeps the original one. Share your sessions
+to the Mac before you delete the old copy.
 
 ## Usage
 
@@ -106,10 +115,17 @@ PolarLab only **reads** Health data, and asks for permission on the first visit 
 To change it later: **Settings → Health → Data Access & Devices → PolarLab**. If access is
 denied, iOS just returns no workouts.
 
-> **Sideloading note.** HealthKit needs the `com.apple.developer.healthkit` entitlement. The CI
-> workflow embeds it with an ad-hoc signature so AltStore/Sideloadly can carry it over to your
-> Apple ID signature. If the installed app never asks for Health access, install it from Xcode
-> (option A) instead: free Personal Teams support HealthKit.
+> **Sideloading note.** HealthKit needs the `com.apple.developer.healthkit` entitlement, and a
+> free Apple ID is allowed to have it. The CI workflow embeds it in the `.ipa` with an ad-hoc
+> signature, but the signing tool must also enable HealthKit on the App ID, or the entitlement
+> is dropped from the provisioning profile and the app never asks for Health access:
+>
+> | Tool | HealthKit with a free Apple ID |
+> |---|---|
+> | **Xcode** (option A) | ✅ |
+> | **Impactor** (option B) | ✅ tested: it enables every capability the app's entitlements ask for |
+> | **AltStore / SideStore** | ❌ AltSign only enables App Groups and Inter-App Audio, so the Health tab stays empty |
+> | **Sideloadly** | not tested |
 
 ## Battery
 
