@@ -8,11 +8,14 @@
 
 /* Begin PBXBuildFile section */
 		199374DB21CC13B0EBB86925 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48AD58FED3F84FC54000DC07 /* SettingsView.swift */; };
+		240B64A8390C8CBCD7F0464D /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 034AFA055023A3EB1769B288 /* HealthKit.framework */; };
 		309B1D73938D3197C34A57CF /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA43618B50BF95C5028B246B /* SessionStore.swift */; };
+		49A65C75EED72066D2FA8436 /* HealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56B0510BEFE3F791AF5AABB7 /* HealthView.swift */; };
 		49D4261F4B0E8F486705FD26 /* PolarLabApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC968A67C6E7F7C86278110 /* PolarLabApp.swift */; };
 		5A0447A6550F00D5581236D4 /* SessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D57C7C2E6432FD80FD4627F /* SessionsView.swift */; };
 		5DAD2C972317E0CB4F12AE91 /* PolarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C46AF7C36A3E64A38D9DD19 /* PolarService.swift */; };
 		6F0094A0D32B6274EAE3F4D3 /* H10Link.swift in Sources */ = {isa = PBXBuildFile; fileRef = B65E56C763EADC5DA8244CCC /* H10Link.swift */; };
+		711890670E20E96F9A2F2007 /* HealthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 478BDAD86C77405397446AC3 /* HealthStore.swift */; };
 		72AD3E93BBB3C4EB084D0F9B /* PolarKit in Frameworks */ = {isa = PBXBuildFile; productRef = 81E1456604454B1BD141F7D2 /* PolarKit */; };
 		7402A05C49A7C86872FD9E29 /* LiveModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58F5038731F7BD7F31798328 /* LiveModel.swift */; };
 		914243A126F00B64250B97AB /* EcgStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 678B10B2D015229F61065E53 /* EcgStrip.swift */; };
@@ -22,9 +25,12 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		034AFA055023A3EB1769B288 /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
 		2C46AF7C36A3E64A38D9DD19 /* PolarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolarService.swift; sourceTree = "<group>"; };
+		478BDAD86C77405397446AC3 /* HealthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStore.swift; sourceTree = "<group>"; };
 		48AD58FED3F84FC54000DC07 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		4D57C7C2E6432FD80FD4627F /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
+		56B0510BEFE3F791AF5AABB7 /* HealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthView.swift; sourceTree = "<group>"; };
 		58F5038731F7BD7F31798328 /* LiveModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveModel.swift; sourceTree = "<group>"; };
 		678B10B2D015229F61065E53 /* EcgStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EcgStrip.swift; sourceTree = "<group>"; };
 		86B4BF75959D426CFA14BE46 /* demo.plab */ = {isa = PBXFileReference; path = demo.plab; sourceTree = "<group>"; };
@@ -43,6 +49,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				72AD3E93BBB3C4EB084D0F9B /* PolarKit in Frameworks */,
+				240B64A8390C8CBCD7F0464D /* HealthKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -63,6 +70,8 @@
 			children = (
 				678B10B2D015229F61065E53 /* EcgStrip.swift */,
 				B65E56C763EADC5DA8244CCC /* H10Link.swift */,
+				478BDAD86C77405397446AC3 /* HealthStore.swift */,
+				56B0510BEFE3F791AF5AABB7 /* HealthView.swift */,
 				58F5038731F7BD7F31798328 /* LiveModel.swift */,
 				DF195C52BD7B94803F6BFBF4 /* LiveView.swift */,
 				9BC968A67C6E7F7C86278110 /* PolarLabApp.swift */,
@@ -88,6 +97,7 @@
 			children = (
 				182B51920A0C2DE2D1A8ED5A /* App */,
 				890CDFB2C26454AC594FB6A0 /* Packages */,
+				D2DFCA8C3EA64576A96FDB8C /* Frameworks */,
 				663C5DDF04DFB728B4AA52B2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -106,6 +116,14 @@
 				9C4871C5D831538BBD7A48B6 /* PolarKit */,
 			);
 			name = Packages;
+			sourceTree = "<group>";
+		};
+		D2DFCA8C3EA64576A96FDB8C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				034AFA055023A3EB1769B288 /* HealthKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -186,6 +204,8 @@
 			files = (
 				914243A126F00B64250B97AB /* EcgStrip.swift in Sources */,
 				6F0094A0D32B6274EAE3F4D3 /* H10Link.swift in Sources */,
+				711890670E20E96F9A2F2007 /* HealthStore.swift in Sources */,
+				49A65C75EED72066D2FA8436 /* HealthView.swift in Sources */,
 				7402A05C49A7C86872FD9E29 /* LiveModel.swift in Sources */,
 				F13686332600A08512B38611 /* LiveView.swift in Sources */,
 				49D4261F4B0E8F486705FD26 /* PolarLabApp.swift in Sources */,
@@ -259,6 +279,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/PolarLab.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -343,6 +364,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/PolarLab.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

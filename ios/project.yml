@@ -19,6 +19,7 @@ targets:
     dependencies:
       - package: PolarKit
         product: PolarKit
+      - sdk: HealthKit.framework
     info:
       path: App/Info.plist
       properties:
@@ -26,6 +27,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSBluetoothAlwaysUsageDescription: PolarLab si collega alla fascia Polar H10 per ricevere ECG, battiti e accelerometro.
+        NSHealthShareUsageDescription: PolarLab legge i tuoi allenamenti (frequenza cardiaca, percorso, passo, cadenza…) per esportarli sul Mac. Non scrive nulla in Salute.
         UIBackgroundModes: [bluetooth-central]
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
@@ -42,5 +44,6 @@ targets:
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: App/PolarLab.entitlements
         ENABLE_PREVIEWS: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

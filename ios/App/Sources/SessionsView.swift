@@ -118,7 +118,7 @@ struct SessionDetail: View {
     }
 }
 
-private struct Row: View {
+struct Row: View {
     let title: String
     let value: String
     init(_ title: String, _ value: String) {

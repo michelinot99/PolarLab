@@ -12,6 +12,8 @@ struct PolarLabApp: App {
                     .tabItem { Label("Corsa", systemImage: "heart.text.square") }
                 SessionsView()
                     .tabItem { Label("Sessioni", systemImage: "list.bullet.rectangle") }
+                HealthView()
+                    .tabItem { Label("Salute", systemImage: "heart.circle") }
             }
             .environment(model)
             .preferredColorScheme(.dark)

@@ -85,6 +85,32 @@ archive and analysed. From the terminal:
 venv.nosync/bin/python -m polarlab --replay ~/Downloads/PolarLab_2026-10-25_081500   # extracted folder
 ```
 
+## Apple Health export
+
+The **Salute** (Health) tab lists the workouts stored in Apple Health (Apple Watch, other apps)
+over the last 90 days; «Mostra 90 giorni in più» goes further back. Open a workout and tap
+**Condividi** (Share) to AirDrop it to the Mac as `Salute_<date>_<type>.zip`:
+
+| File | Content |
+|---|---|
+| `workout.json` | type, start/end, duration, source app and device, per-metric statistics (sum/avg/min/max), metadata (indoor, weather, elevation…), events (pauses, laps, segments) and activities |
+| `heart_rate.csv` | every heart-rate reading: `time_iso,t_s,bpm,source` |
+| `series.csv` | all other series in long format: `metric,start_iso,end_iso,t_s,dur_s,value,unit,source` (distance, steps, active energy, running speed/power/stride length/vertical oscillation/ground contact time, cycling speed/power/cadence, swimming strokes) |
+| `route.gpx` | GPX 1.1 track with elevation and heart rate on each point (Garmin `TrackPointExtension`) |
+
+`t_s` is seconds from the workout start. Series are read over the workout's time span, so
+samples from other sources (e.g. iPhone steps alongside Watch steps) can appear: the `source`
+column tells them apart. Files with no data are not created (an indoor run has no `route.gpx`).
+
+PolarLab only **reads** Health data, and asks for permission on the first visit to the tab.
+To change it later: **Settings → Health → Data Access & Devices → PolarLab**. If access is
+denied, iOS just returns no workouts.
+
+> **Sideloading note.** HealthKit needs the `com.apple.developer.healthkit` entitlement. The CI
+> workflow embeds it with an ad-hoc signature so AltStore/Sideloadly can carry it over to your
+> Apple ID signature. If the installed app never asks for Health access, install it from Xcode
+> (option A) instead: free Personal Teams support HealthKit.
+
 ## Battery
 
 | Choice | Why |

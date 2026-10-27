@@ -26,6 +26,8 @@
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>PolarLab si collega alla fascia Polar H10 per ricevere ECG, battiti e accelerometro.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>PolarLab legge i tuoi allenamenti (frequenza cardiaca, percorso, passo, cadenza…) per esportarli sul Mac. Non scrive nulla in Salute.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>

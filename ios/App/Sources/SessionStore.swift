@@ -141,15 +141,20 @@ struct SessionArchive: Transferable {
     }
 
     func makeZip() throws -> URL {
-        let dest = FileManager.default.temporaryDirectory.appendingPathComponent("PolarLab_\(dir.lastPathComponent).zip")
-        try? FileManager.default.removeItem(at: dest)
-        var coordError: NSError?
-        var copyError: Error?
-        // Con .forUploading il sistema produce da solo lo zip della cartella
-        NSFileCoordinator().coordinate(readingItemAt: dir, options: .forUploading, error: &coordError) { zip in
-            do { try FileManager.default.copyItem(at: zip, to: dest) } catch { copyError = error }
-        }
-        if let e = coordError ?? copyError { throw e }
-        return dest
+        try zipFolder(dir, named: "PolarLab_\(dir.lastPathComponent).zip")
     }
+}
+
+/// Zip di una cartella nella cartella temporanea. Con .forUploading il sistema produce da solo
+/// lo zip, senza librerie esterne.
+func zipFolder(_ dir: URL, named name: String) throws -> URL {
+    let dest = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+    try? FileManager.default.removeItem(at: dest)
+    var coordError: NSError?
+    var copyError: Error?
+    NSFileCoordinator().coordinate(readingItemAt: dir, options: .forUploading, error: &coordError) { zip in
+        do { try FileManager.default.copyItem(at: zip, to: dest) } catch { copyError = error }
+    }
+    if let e = coordError ?? copyError { throw e }
+    return dest
 }

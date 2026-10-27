@@ -76,6 +76,8 @@ run.
 - **Auto-records** as soon as the strap streams, also with the screen off (`bluetooth-central`
   background mode). It closes the session after 10 minutes without data.
 - Session list with summary and charts. *Share* creates a zip for the Mac.
+- **Apple Health export**: any workout in Health (summary, heart rate, GPS route as GPX, pace,
+  cadence, power…) shared to the Mac as a zip. See [ios/README.md](ios/README.md#apple-health-export).
 - Built to save battery: no GPS, no drawing with the screen off, writes to disk every 10 s
 
 ## Requirements
