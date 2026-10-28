@@ -87,7 +87,7 @@ run.
 ## Mac: install and run
 
 ```bash
-git clone https://github.com/michelinot99/PolarLab.git
+git clone https://github.com/migalella/PolarLab.git
 cd PolarLab
 python3.13 -m venv venv.nosync
 venv.nosync/bin/pip install -r requirements.txt
@@ -160,7 +160,7 @@ Choose one of these:
 artifact. AltStore and Sideloadly sign it with your Apple ID during installation. To download
 it, sign in to GitHub, go to *Actions → iPhone → latest run → Artifacts*, or use:
 ```bash
-gh run download -R michelinot99/PolarLab -n PolarLab-ipa
+gh run download -R migalella/PolarLab -n PolarLab-ipa
 ```
 If you use a fork, run the workflow there (*Actions → iPhone → Run workflow*).
 

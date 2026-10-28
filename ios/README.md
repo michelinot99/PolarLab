@@ -49,7 +49,7 @@ Both tools sign an `.ipa` with your Apple ID and install it.
    *Actions → iPhone → Run workflow*). Download the `PolarLab-ipa` artifact of the latest
    run (sign-in required; artifacts are kept for 30 days), or:
    ```bash
-   gh run download -R michelinot99/PolarLab -n PolarLab-ipa
+   gh run download -R migalella/PolarLab -n PolarLab-ipa
    ```
 2. **AltStore**: install [AltServer](https://altstore.io) on the Mac and AltStore on the iPhone
    (follow their guide), connect the iPhone, then ⌥-click the AltServer menu-bar icon →
